@@ -24,6 +24,7 @@ from typing import (
   cast,
 )
 
+from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.liquid_handling.channel_positioning import (
   compute_channel_offsets,
 )
@@ -155,7 +156,7 @@ class LiquidHandler(Resource, Machine):
   def _resource_pickup(self, value: Optional[ResourcePickup]) -> None:
     self._resource_pickups[0] = value
 
-  async def _enter_lifespan(self, stack: contextlib.AsyncExitStack):
+  async def _enter_lifespan(self, stack: AsyncExitStackWithShielding):
     """Prepare the robot for use."""
 
     self.backend.set_deck(self.deck)
@@ -179,7 +180,6 @@ class LiquidHandler(Resource, Machine):
       tracker.register_callback(self._state_updated)
 
     self._resource_pickups = {a: None for a in range(self.backend.num_arms)}
-
 
   def serialize_state(self) -> Dict[str, Any]:
     """Serialize the state of this liquid handler. Use :meth:`~Resource.serialize_all_states` to

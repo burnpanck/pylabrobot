@@ -1,10 +1,8 @@
-import anyio
 import warnings
-import contextlib
 from abc import ABC
 from typing import Dict, List, Literal, Optional, Union
 
-from pylabrobot.concurrency import AsyncExitStackWithShielding
+import anyio
 
 from pylabrobot.arms.backend import (
   AccessPattern,
@@ -15,6 +13,7 @@ from pylabrobot.arms.backend import (
 from pylabrobot.arms.precise_flex.coords import ElbowOrientation, PreciseFlexCartesianCoords
 from pylabrobot.arms.precise_flex.error_codes import ERROR_CODES
 from pylabrobot.arms.precise_flex.joints import PFAxis
+from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.io.socket import Socket
 from pylabrobot.resources import Coordinate, Rotation
 
@@ -109,7 +108,6 @@ class PreciseFlexBackend(SCARABackend, ABC):
     # push_async_callback executes in reverse order!
     stack.push_shielded_async_callback(self.power_off_robot)
     stack.push_shielded_async_callback(self.detach)
-
 
   async def set_speed(self, speed_percent: float):
     """Set the speed percentage of the arm's movement (0-100)."""

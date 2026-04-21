@@ -6,12 +6,11 @@ It handles connection management, message routing, and the introspection API.
 
 from __future__ import annotations
 
-import contextlib
-
 import logging
 from dataclasses import dataclass
 from typing import Dict, Optional, Union
 
+from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.io.binary import Reader
 from pylabrobot.io.socket import Socket
 from pylabrobot.liquid_handling.backends.backend import LiquidHandlerBackend
@@ -300,13 +299,14 @@ class HamiltonTCPBackend(LiquidHandlerBackend):
     # Step 4: Discover root objects
     await self._discover_root()
 
-  async def _enter_lifespan(self, stack: contextlib.AsyncExitStack):
+  async def _enter_lifespan(self, stack: AsyncExitStackWithShielding):
     await super()._enter_lifespan(stack)
     await stack.enter_async_context(self.io)
 
     def cleanup():
       self._connected = False
       logger.info("Hamilton backend stopped")
+
     stack.callback(cleanup)
 
     # Set connection state after successful connection
@@ -570,8 +570,6 @@ class HamiltonTCPBackend(LiquidHandlerBackend):
       raise RuntimeError(f"Hamilton error {action}: {error_message}")
 
     return command.interpret_response(response_message)
-
-
 
   def serialize(self) -> dict:
     """Serialize backend configuration."""

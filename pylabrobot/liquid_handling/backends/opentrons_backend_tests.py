@@ -1,9 +1,9 @@
 import unittest
 from unittest.mock import patch
-import contextlib
-from pylabrobot.testing.concurrency import AnyioTestBase
 
 import pytest
+
+from pylabrobot.testing.concurrency import AnyioTestBase
 
 pytest.importorskip("ot_api")
 
@@ -82,7 +82,6 @@ class OpentronsBackendSetupTests(AnyioTestBase):
     self.mock_create.assert_called_once()
     self.mock_home.assert_called_once()
     self.mock_add_mounted_pipettes.assert_called_once()
-
 
   def test_serialize(self):
     serialized = OpentronsOT2Backend(host="localhost", port=1337).serialize()
@@ -166,7 +165,7 @@ class OpentronsBackendCommandTests(AnyioTestBase):
 
     mock_drop_tip.side_effect = assert_parameters
 
-    await self.test_tip_pick_up.original_func(self)
+    await self.test_tip_pick_up.original_func(self)  # type: ignore[attr-defined]
     await self.lh.drop_tips(self.tip_rack["A1"])
 
   @patch("ot_api.lh.aspirate_in_place")
@@ -185,7 +184,7 @@ class OpentronsBackendCommandTests(AnyioTestBase):
 
     mock_aspirate.side_effect = assert_parameters
 
-    await self.test_tip_pick_up.original_func(self)
+    await self.test_tip_pick_up.original_func(self)  # type: ignore[attr-defined]
     self.plate.get_well("A1").tracker.set_volume(10)
     await self.lh.aspirate(self.plate["A1"], vols=[10])
 

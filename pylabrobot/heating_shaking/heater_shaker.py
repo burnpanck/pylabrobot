@@ -1,10 +1,9 @@
 from typing import Optional
 
-from pylabrobot.machines.machine import Machine
+from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.resources.coordinate import Coordinate
 from pylabrobot.shaking import Shaker
 from pylabrobot.temperature_controlling import TemperatureController
-from pylabrobot.concurrency import AsyncExitStackWithShielding
 
 from .backend import HeaterShakerBackend
 

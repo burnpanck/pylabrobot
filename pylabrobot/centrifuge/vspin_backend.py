@@ -1,16 +1,14 @@
-import anyio
-import contextlib
 import ctypes
 import json
 import logging
 import math
 import os
-import time
 import warnings
 from typing import Optional
 
-from pylabrobot.concurrency import AsyncExitStackWithShielding
+import anyio
 
+from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.io.ftdi import FTDI
 
 from .backend import CentrifugeBackend, LoaderBackend
@@ -53,7 +51,7 @@ class Access2Backend(LoaderBackend):
     await self.io.write(command)
     return await self._read()
 
-  async def _enter_lifespan(self, stack: contextlib.AsyncExitStack):
+  async def _enter_lifespan(self, stack: AsyncExitStackWithShielding):
     await super()._enter_lifespan(stack)
     logger.debug("[loader] setup")
 
@@ -76,7 +74,6 @@ class Access2Backend(LoaderBackend):
     # await self.send_command(bytes.fromhex("11050003002000006bd4"))
     await self.send_command(bytes.fromhex("1105000e00440b00000000000000007041020203c7"))
     # await self.send_command(bytes.fromhex("11050003002000006bd4"))
-
 
   def serialize(self):
     return {"io": self.io.serialize(), "timeout": self.timeout}
@@ -196,6 +193,7 @@ class VSpinBackend(CentrifugeBackend):
 
     async def _cleanup():
       await self.configure_and_initialize()
+
     stack.push_shielded_async_callback(_cleanup)
 
     # TODO: add functionality where if robot has been initialized before nothing needs to happen
@@ -274,7 +272,6 @@ class VSpinBackend(CentrifugeBackend):
       device_id = await self.io.get_serial()
       self._bucket_1_remainder = _load_vspin_calibrations(device_id)
 
-
   @property
   def bucket_1_remainder(self) -> int:
     if self._bucket_1_remainder is None:
@@ -307,8 +304,6 @@ class VSpinBackend(CentrifugeBackend):
       + bucket_1_position_mod_full_rotation
     )
     return bucket_1_position
-
-
 
   class _StatusPositionTachometer(ctypes.LittleEndianStructure):
     _pack_ = 1

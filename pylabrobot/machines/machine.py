@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import functools
 import sys
-import contextlib
-from abc import ABC
-from typing import Any, Awaitable, Callable, TypeVar, Optional
+from typing import Any, Awaitable, Callable, TypeVar
 
+from pylabrobot.concurrency import AsyncExitStackWithShielding, AsyncResource, global_manager
 from pylabrobot.machines.backend import MachineBackend
 from pylabrobot.serializer import SerializableMixin
-from pylabrobot.concurrency import global_manager, AsyncResource
 
 if sys.version_info < (3, 10):
   from typing_extensions import ParamSpec
@@ -38,7 +36,6 @@ def need_setup_finished(func: Callable[_P, _R]) -> Callable[_P, _R]:
     return await func(*args, **kwargs)
 
   return wrapper
-
 
 
 class Machine(SerializableMixin, AsyncResource):
@@ -75,7 +72,7 @@ class Machine(SerializableMixin, AsyncResource):
     data_copy["backend"] = backend
     return cls(**data_copy)
 
-  async def _enter_lifespan(self, stack: contextlib.AsyncExitStack):
+  async def _enter_lifespan(self, stack: AsyncExitStackWithShielding):
     await stack.enter_async_context(self.backend)
 
   async def setup(self, **kwargs):

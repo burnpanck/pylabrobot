@@ -2,11 +2,10 @@
 
 import unittest
 import unittest.mock
-import datetime
 from typing import Literal, cast
 
-from pylabrobot.liquid_handling import LiquidHandler
 from pylabrobot.concurrency import AsyncExitStackWithShielding
+from pylabrobot.liquid_handling import LiquidHandler
 from pylabrobot.liquid_handling.standard import GripDirection, Pickup
 from pylabrobot.plate_reading import PlateReader
 from pylabrobot.plate_reading.chatterbox import PlateReaderChatterboxBackend
@@ -31,21 +30,20 @@ from pylabrobot.resources import (
 from pylabrobot.resources.barcode import Barcode
 from pylabrobot.resources.greiner import Greiner_384_wellplate_28ul_Fb
 from pylabrobot.resources.hamilton import STARLetDeck, hamilton_96_tiprack_300uL_filter
+from pylabrobot.testing.concurrency import AnyioTestBase, lifespan_kwargs
+from pylabrobot.testing.mock_io import MockIO
 
 from .STAR_backend import (
   CommandSyntaxError,
+  HamiltonLiquidHandler,
   HamiltonNoTipError,
   HardwareError,
   STARBackend,
-  HamiltonLiquidHandler,
   STARFirmwareError,
   UnknownHamiltonError,
   parse_star_fw_string,
 )
 from .STAR_chatterbox import _DEFAULT_EXTENDED_CONFIGURATION, _DEFAULT_MACHINE_CONFIGURATION
-
-from pylabrobot.testing.concurrency import AnyioTestBase, lifespan_kwargs
-from pylabrobot.testing.mock_io import MockIO
 
 
 class TestSTARResponseParsing(unittest.TestCase):
@@ -148,17 +146,18 @@ def _any_write_and_read_command_call(cmd):
   )
 
 
-
 class TestSTARUSBComms(AnyioTestBase):
   """Test that USB data is parsed correctly."""
 
   async def _enter_lifespan(self, stack):
     self.star = STARBackend(read_timeout=1, packet_read_timeout=1)
     self.star.set_deck(STARLetDeck())
-    self.star.io = MockIO()
+    self.star.io = MockIO()  # type: ignore
     # We need to temporarily replace _enter_lifespan with one that forwards to the parent class,
     # so as not to do any hardware setup on enter, but still start the reader loop.
-    self.star._enter_lifespan = lambda stack: HamiltonLiquidHandler._enter_lifespan(self.star, stack)
+    self.star._enter_lifespan = lambda stack, **kwargs: HamiltonLiquidHandler._enter_lifespan(
+      self.star, stack
+    )
     await stack.enter_async_context(self.star)
 
   async def test_send_command_correct_response(self):
@@ -177,7 +176,6 @@ class TestSTARUSBComms(AnyioTestBase):
       await self.star.send_command("C0", command="QM", fmt="id####")
 
 
-
 class STARCommandCatcher(STARBackend):
   """Mock backend for star that catches commands and saves them instead of sending them to the
   machine."""
@@ -186,7 +184,7 @@ class STARCommandCatcher(STARBackend):
     super().__init__()
     self.commands = []
 
-  async def _enter_lifespan(self, stack: AsyncExitStackWithShielding) -> None:
+  async def _enter_lifespan(self, stack: AsyncExitStackWithShielding, **kwargs) -> None:
     # Bypass STARBackend._enter_lifespan to avoid sending commands to mock machine.
     self._num_channels = 8
     self._machine_conf = _DEFAULT_MACHINE_CONFIGURATION
@@ -197,6 +195,7 @@ class STARCommandCatcher(STARBackend):
     def cleanup():
       self.stop_finished = True
       self._setup_done = False
+
     stack.callback(cleanup)
 
   async def send_command(  # type: ignore
@@ -222,7 +221,7 @@ class TestSTARLiquidHandlerCommands(AnyioTestBase):
   async def _enter_lifespan(self, stack, *, with_lh=True):
     self.STAR = STARBackend(read_timeout=1)
     self.STAR._write_and_read_command = unittest.mock.AsyncMock()
-    self.STAR.io = MockIO()
+    self.STAR.io = MockIO()  # type: ignore
 
     self.deck = STARLetDeck()
     if with_lh:
@@ -280,7 +279,9 @@ class TestSTARLiquidHandlerCommands(AnyioTestBase):
     self.STAR._iswap_parked = True
 
     # Bypass hardware initialization in _enter_lifespan
-    self.STAR._enter_lifespan = lambda stack: HamiltonLiquidHandler._enter_lifespan(self.STAR, stack)
+    self.STAR._enter_lifespan = lambda stack, **kwargs: HamiltonLiquidHandler._enter_lifespan(
+      self.STAR, stack
+    )
 
     if with_lh:
       await stack.enter_async_context(self.lh)
@@ -396,7 +397,6 @@ class TestSTARLiquidHandlerCommands(AnyioTestBase):
           allow_manual_input=True,
           labware_description="Cos_96_PCR_0001",
         )
-
 
   async def test_indicator_light(self):
     await self.STAR.set_loading_indicators(bit_pattern=[True] * 54, blink_pattern=[False] * 54)
@@ -1112,8 +1112,9 @@ class STARIswapMovementTests(AnyioTestBase):
     self.STAR._machine_conf = _DEFAULT_MACHINE_CONFIGURATION
     self.STAR._extended_conf = _DEFAULT_EXTENDED_CONFIGURATION
 
-    async def mock_enter_lifespan(stack):
+    async def mock_enter_lifespan(stack, **kwargs):
       pass
+
     self.STAR._enter_lifespan = mock_enter_lifespan
 
     self.STAR._core_parked = True
@@ -1245,8 +1246,9 @@ class STARFoilTests(AnyioTestBase):
     self.star._machine_conf = _DEFAULT_MACHINE_CONFIGURATION
     self.star._extended_conf = _DEFAULT_EXTENDED_CONFIGURATION
 
-    async def mock_enter_lifespan(stack):
+    async def mock_enter_lifespan(stack, **kwargs):
       pass
+
     self.star._enter_lifespan = mock_enter_lifespan
 
     self.star._core_parked = True
@@ -1439,13 +1441,14 @@ class TestSTARTipPickupDropAllSizes(AnyioTestBase):
   async def _enter_lifespan(self, stack):
     self.backend = STARBackend()
     self.backend._write_and_read_command = unittest.mock.AsyncMock()
-    self.backend.io = MockIO()
+    self.backend.io = MockIO()  # type: ignore
     self.backend._num_channels = 8
     self.backend._machine_conf = _DEFAULT_MACHINE_CONFIGURATION
     self.backend._extended_conf = _DEFAULT_EXTENDED_CONFIGURATION
 
-    async def mock_enter_lifespan(stack):
+    async def mock_enter_lifespan(stack, **kwargs):
       pass
+
     self.backend._enter_lifespan = mock_enter_lifespan
 
     self.backend._core_parked = True
@@ -1669,7 +1672,7 @@ class STARTestBase(AnyioTestBase):
   async def _enter_lifespan(self, stack):
     self.STAR = STARBackend(read_timeout=1)
     self.STAR._write_and_read_command = unittest.mock.AsyncMock()
-    self.STAR.io = MockIO()
+    self.STAR.io = MockIO()  # type: ignore
 
     self.deck = STARLetDeck()
     self.lh = LiquidHandler(self.STAR, deck=self.deck)
@@ -1686,8 +1689,9 @@ class STARTestBase(AnyioTestBase):
     self.STAR._machine_conf = _DEFAULT_MACHINE_CONFIGURATION
     self.STAR._extended_conf = _DEFAULT_EXTENDED_CONFIGURATION
 
-    async def mock_enter_lifespan(stack):
+    async def mock_enter_lifespan(stack, **kwargs):
       pass
+
     self.STAR._enter_lifespan = mock_enter_lifespan
 
     self.STAR._core_parked = True

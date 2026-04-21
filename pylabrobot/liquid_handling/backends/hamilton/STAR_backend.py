@@ -1,4 +1,3 @@
-import anyio
 import datetime
 import enum
 import functools
@@ -6,7 +5,6 @@ import logging
 import re
 import sys
 import warnings
-import contextlib
 from abc import ABCMeta
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
@@ -28,12 +26,15 @@ from typing import (
   cast,
 )
 
+import anyio
+
 if sys.version_info < (3, 10):
   from typing_extensions import Concatenate, ParamSpec
 else:
   from typing import Concatenate, ParamSpec
 
 from pylabrobot import audio
+from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.heating_shaking.hamilton_backend import HamiltonHeaterShakerInterface
 from pylabrobot.liquid_handling.backends.hamilton.base import (
   HamiltonLiquidHandler,
@@ -1286,6 +1287,21 @@ class ExtendedConfiguration:
 
 
 @dataclass
+class PipChannelInformation:
+  """Installed hardware information for a single pipetting channel (VW command)."""
+
+  ChannelType = Literal["ML_STAR", "ML_STAR_RPC"]
+  HeadType = Literal["ML_STAR", "ML_STAR_PLE", "ML_STAR_RPC"]
+  StopDiscType = Literal["core_i", "core_ii"]
+  PressureADC = Literal["Renesas_X9268", "Analog_Devices_AD5263"]
+
+  channel_type: ChannelType
+  head_type: HeadType
+  stop_disc_type: StopDiscType
+  pressure_adc: PressureADC
+
+
+@dataclass
 class Head96Information:
   """Information about the installed 96-head."""
 
@@ -1352,6 +1368,7 @@ class STARBackend(HamiltonLiquidHandler, HamiltonHeaterShakerInterface):
     self._unsafe = UnSafe(self)
 
     self._iswap_version: Optional[str] = None  # loaded lazily
+    self._pip_channel_information: List[PipChannelInformation] = []
 
     self._default_1d_symbology: Barcode1DSymbology = "Code 128 (Subset B and C)"
 
@@ -1515,6 +1532,25 @@ class STARBackend(HamiltonLiquidHandler, HamiltonHeaterShakerInterface):
       (await self.send_command(STARBackend.channel_id(channel), "RF", fmt="rf" + "&" * 17))["rf"],
     )
 
+  async def _pip_channel_request_configuration(self, channel: int) -> PipChannelInformation:
+    """Request installed hardware for a pipetting channel using the VW command.
+
+    Args:
+      channel: 0-indexed channel number.
+    """
+    resp: str = await self.send_command(STARBackend.channel_id(channel), "VW")
+    hw_tokens = resp.split("vw")[-1].strip().split()
+    return PipChannelInformation(
+      channel_type="ML_STAR_RPC" if hw_tokens[0] == "1" else "ML_STAR",
+      head_type="ML_STAR_PLE"
+      if hw_tokens[1] == "1"
+      else "ML_STAR_RPC"
+      if hw_tokens[1] == "2"
+      else "ML_STAR",
+      stop_disc_type="core_i" if hw_tokens[2] == "0" else "core_ii",
+      pressure_adc="Analog_Devices_AD5263" if hw_tokens[3] == "1" else "Renesas_X9268",
+    )
+
   def get_id_from_fw_response(self, resp: str) -> Optional[int]:
     """Get the id from a firmware response."""
     parsed = parse_star_fw_string(resp, "id####")
@@ -1640,7 +1676,7 @@ class STARBackend(HamiltonLiquidHandler, HamiltonHeaterShakerInterface):
 
   async def _enter_lifespan(
     self,
-    stack: contextlib.AsyncExitStack,
+    stack: AsyncExitStackWithShielding,
     *,
     skip_instrument_initialization: bool = False,
     skip_pip: bool = False,
@@ -1686,6 +1722,11 @@ class STARBackend(HamiltonLiquidHandler, HamiltonHeaterShakerInterface):
       if (not initialized or any(tip_presences)) and not skip_pip:
         await self.initialize_pip()
       self._channels_minimum_y_spacing = await self.channels_request_y_minimum_spacing()
+
+      # Cache per-channel hardware configuration for version-specific behavior
+      self._pip_channel_information = [
+        await self._pip_channel_request_configuration(ch) for ch in range(self.num_channels)
+      ]
 
     async def set_up_autoload():
       if self.machine_conf.auto_load_installed and not skip_autoload:
@@ -1791,7 +1832,7 @@ class STARBackend(HamiltonLiquidHandler, HamiltonHeaterShakerInterface):
       A list of exact (unrounded) minimum Y spacings in mm, one per channel,
       indexed by channel number.
     """
-    results = [None] * self.num_channels
+    results: List[Optional[float]] = [None] * self.num_channels
 
     async def _worker(idx):
       results[idx] = await self.channel_request_y_minimum_spacing(channel_idx=idx)
@@ -1882,7 +1923,7 @@ class STARBackend(HamiltonLiquidHandler, HamiltonHeaterShakerInterface):
       and ``dispensing_cycles``.
     """
 
-    results = [None] * self.num_channels
+    results: List[Optional[Any]] = [None] * self.num_channels
 
     async def _worker(idx):
       results[idx] = await self.channel_request_cycle_counts(channel_idx=idx)
@@ -1891,7 +1932,7 @@ class STARBackend(HamiltonLiquidHandler, HamiltonHeaterShakerInterface):
       for idx in range(self.num_channels):
         tg.start_soon(_worker, idx)
 
-    return cast(List[ChannelCycleCounts], results)
+    return cast(List["STARBackend.ChannelCycleCounts"], results)
 
   # # # ACTION Commands # # #
 
@@ -2129,19 +2170,23 @@ class STARBackend(HamiltonLiquidHandler, HamiltonHeaterShakerInterface):
 
     # Run n_replicates detection loop for this batch
     for _ in range(n_replicates):
-      errors = [None] * len(use_channels)
+      errors: List[Optional[Exception]] = [None] * len(use_channels)
       async with anyio.create_task_group() as tg:
-        for idx, (channel, lip, sps) in enumerate(zip(use_channels, batch_lowest_immers, batch_start_pos)):
-          async def worker(i=idx, ch=channel, l=lip, s=sps):
+        for idx, (channel, lip, sps) in enumerate(
+          zip(use_channels, batch_lowest_immers, batch_start_pos)
+        ):
+
+          async def worker(i=idx, ch=channel, lip=lip, sps=sps):
             try:
               await detect_func(
                 channel_idx=ch,
-                lowest_immers_pos=l,
-                start_pos_search=s,
+                lowest_immers_pos=lip,
+                start_pos_search=sps,
                 channel_speed=search_speed,
               )
             except Exception as e:
               errors[i] = e
+
           tg.start_soon(worker)
 
       # Get heights for ALL channels, handling failures for channels with no liquid
@@ -3525,24 +3570,26 @@ class STARBackend(HamiltonLiquidHandler, HamiltonHeaterShakerInterface):
     with H0 CommandSyntaxError trace 40 ("No parallel processes permitted"). When the head
     finishes, EV succeeds and harmlessly ensures the Z axis is at the safe position.
     """
-    start = asyncio.get_event_loop().time()
-    while asyncio.get_event_loop().time() - start < timeout:
-      await asyncio.sleep(poll_interval)
-      try:
-        await self.send_command(module="C0", command="EV", read_timeout=10)
-        logger.info("CoRe 96 head finished (EV succeeded)")
-        return
-      except STARFirmwareError as e:
-        h0_error = e.errors.get("CoRe 96 Head")
-        if (
-          h0_error is not None
-          and isinstance(h0_error, CommandSyntaxError)
-          and h0_error.trace_information == 40
-        ):
-          logger.debug("CoRe 96 head still busy, waiting...")
-          continue
-        raise
-    raise TimeoutError("CoRe 96 head did not become idle within timeout")
+    try:
+      with anyio.fail_after(timeout):
+        while True:
+          await anyio.sleep(poll_interval)
+          try:
+            await self.send_command(module="C0", command="EV", read_timeout=10)
+            logger.info("CoRe 96 head finished (EV succeeded)")
+            return
+          except STARFirmwareError as e:
+            h0_error = e.errors.get("CoRe 96 Head")
+            if (
+              h0_error is not None
+              and isinstance(h0_error, CommandSyntaxError)
+              and h0_error.trace_information == 40
+            ):
+              logger.debug("CoRe 96 head still busy, waiting...")
+              continue
+            raise
+    except TimeoutError:
+      raise TimeoutError("CoRe 96 head did not become idle within timeout") from None
 
   @_requires_head96
   async def aspirate96(

@@ -1,7 +1,4 @@
-import unittest
 from unittest.mock import AsyncMock
-
-from pylabrobot.testing.concurrency import AnyioTestBase
 
 from pylabrobot.liquid_handling import LiquidHandler
 from pylabrobot.liquid_handling.backends.serializing_backend import (
@@ -18,6 +15,7 @@ from pylabrobot.resources import (
   no_volume_tracking,
 )
 from pylabrobot.serializer import serialize
+from pylabrobot.testing.concurrency import AnyioTestBase
 
 
 class _TestSerializingBackend(SerializingBackend):

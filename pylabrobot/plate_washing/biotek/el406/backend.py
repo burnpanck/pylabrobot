@@ -13,13 +13,13 @@ Protocol Details:
 
 from __future__ import annotations
 
-import anyio
-import contextlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import anyio
 
+from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.io.ftdi import FTDI
 from pylabrobot.machines.backend import MachineBackend
 from pylabrobot.resources import Plate
@@ -73,7 +73,7 @@ class ExperimentalBioTekEL406Backend(
     self._command_lock: anyio.Lock | None = None
     self._in_batch: bool = False
 
-  async def _enter_lifespan(self, stack: contextlib.AsyncExitStack, *, skip_reset: bool = False):
+  async def _enter_lifespan(self, stack: AsyncExitStackWithShielding, *, skip_reset: bool = False):
     """Set up communication with the EL406.
 
     Configures the FTDI USB interface with the correct parameters:
@@ -103,6 +103,7 @@ class ExperimentalBioTekEL406Backend(
 
     if self.io is None:
       self.io = FTDI(human_readable_device_name="BioTek EL406", device_id=self._device_id)
+
     @stack.callback
     def _cleanup():
       self.io = None
@@ -149,7 +150,6 @@ class ExperimentalBioTekEL406Backend(
       logger.info("  Instrument reset: DONE")
 
     logger.info("BioTekEL406Backend setup complete")
-
 
   @asynccontextmanager
   async def batch(self, plate: Plate) -> AsyncIterator[None]:

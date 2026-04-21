@@ -1,14 +1,14 @@
 import abc
-import time
-import warnings
 import contextlib
-import anyio
+import warnings
 from enum import Enum
 from typing import Dict, Literal, Optional
 
+import anyio
+
+from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.heating_shaking.backend import HeaterShakerBackend
 from pylabrobot.io.usb import USB
-from pylabrobot.concurrency import AsyncExitStackWithShielding
 
 
 class PlateLockPosition(Enum):
@@ -113,7 +113,7 @@ class HamiltonHeaterShakerBackend(HeaterShakerBackend):
 
     async with contextlib.AsyncExitStack() as stack:
       if timeout is not None:
-        await stack.enter_context(anyio.fail_after(timeout))
+        stack.enter_context(anyio.fail_after(timeout))
       while True:
         await self._start_shaking(direction=direction, speed=int_speed, acceleration=acceleration)
         if await self.get_is_shaking():

@@ -1,11 +1,10 @@
 # For direct control of the Opentrons Thermocycler to any USB port.
 # Does not require an Opentrons liquid handler to use.
 
+import asyncio
 from typing import List, Optional
-import contextlib
 
 import anyio
-import asyncio
 
 from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.thermocycling.backend import ThermocyclerBackend
@@ -216,6 +215,7 @@ class OpentronsThermocyclerUSBBackend(ThermocyclerBackend):
         await self.deactivate_block()
         await self.deactivate_lid()
       finally:
+        assert self._driver is not None
         await self._driver.disconnect()
       self._driver = None
 

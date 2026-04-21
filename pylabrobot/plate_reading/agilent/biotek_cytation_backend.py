@@ -1,8 +1,5 @@
-import anyio
-import atexit
 import contextlib
 import logging
-
 import math
 import re
 import time
@@ -10,6 +7,9 @@ import warnings
 from dataclasses import dataclass
 from typing import List, Literal, Optional, Tuple, Union
 
+import anyio
+
+from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.plate_reading.agilent.biotek_backend import BioTekPlateReaderBackend
 from pylabrobot.plate_reading.backend import ImagerBackend
 from pylabrobot.resources import Plate
@@ -108,7 +108,7 @@ class CytationBackend(BioTekPlateReaderBackend, ImagerBackend):
   def _spinnaker_system_context(self):
     self._spinnaker_system = PySpin.System.GetInstance()
     try:
-      version = spinnaker_sys.GetLibraryVersion()
+      version = self._spinnaker_system.GetLibraryVersion()
       logger.debug(
         f"{self.__class__.__name__} Library version: %d.%d.%d.%d",
         version.major,
@@ -129,9 +129,9 @@ class CytationBackend(BioTekPlateReaderBackend, ImagerBackend):
   async def _camera_context(self, cam):
     for _ in range(10):
       try:
-        cam.Init() # SpinnakerException: Spinnaker: Could not read the XML URL [-1010]
+        cam.Init()  # SpinnakerException: Spinnaker: Could not read the XML URL [-1010]
         break
-      except: # noqa
+      except:  # noqa
         await anyio.sleep(0.1)
     else:
       raise RuntimeError("Failed to initialize camera.")
@@ -146,7 +146,7 @@ class CytationBackend(BioTekPlateReaderBackend, ImagerBackend):
       finally:
         cam.DeInit()
 
-  async def _enter_lifespan(self, stack: contextlib.AsyncExitStack, *, use_cam: bool = False):
+  async def _enter_lifespan(self, stack: AsyncExitStackWithShielding, *, use_cam: bool = False):
     await super()._enter_lifespan(stack)
     logger.info(f"{self.__class__.__name__} setting up")
 
@@ -180,7 +180,6 @@ class CytationBackend(BioTekPlateReaderBackend, ImagerBackend):
       self._objectives = None
       self._filters = None
       self._clear_imaging_state()
-
 
   def _clear_imaging_state(self):
     self._exposure = None
@@ -218,7 +217,9 @@ class CytationBackend(BioTekPlateReaderBackend, ImagerBackend):
           and serial_number == self.imaging_config.camera_serial_number
         ):
           target_cam = cam
-          logger.info(f"{self.__class__.__name__} using camera with serial number %s", serial_number)
+          logger.info(
+            f"{self.__class__.__name__} using camera with serial number %s", serial_number
+          )
           break
       else:  # if no specific camera was found by serial number so use the first one
         if num_cameras > 0:
@@ -271,7 +272,6 @@ class CytationBackend(BioTekPlateReaderBackend, ImagerBackend):
 
     # "NOTE: Blackfly and Flea3 GEV cameras need 1 second delay after trigger mode is turned on"
     await anyio.sleep(1)
-
 
   @property
   def objectives(self) -> List[Optional[Objective]]:
@@ -421,7 +421,6 @@ class CytationBackend(BioTekPlateReaderBackend, ImagerBackend):
           self._objectives.append(annulus_part_number2objective[annulus_part_number])
     else:
       raise RuntimeError(f"{self.__class__.__name__}: Unsupported version: {self.version}")
-
 
   def _reset_trigger(self):
     if self._cam is None:
@@ -788,7 +787,7 @@ class CytationBackend(BioTekPlateReaderBackend, ImagerBackend):
       try:
         node_softwaretrigger_cmd.Execute()
         timeout = int(self._cam.ExposureTime.GetValue() / 1000 + 1000)  # from example
-        image_result = await anyio.to_thread.run_sync(self._cam.GetNextImage,timeout)
+        image_result = await anyio.to_thread.run_sync(self._cam.GetNextImage, timeout)
         if not image_result.IsIncomplete():
           processor = PySpin.ImageProcessor()
           processor.SetColorProcessing(color_processing_algorithm)

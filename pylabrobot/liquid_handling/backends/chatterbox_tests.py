@@ -1,8 +1,4 @@
-import unittest
 import contextlib
-from types import SimpleNamespace
-
-import pytest
 
 from pylabrobot.liquid_handling import LiquidHandler
 from pylabrobot.liquid_handling.backends.chatterbox import (

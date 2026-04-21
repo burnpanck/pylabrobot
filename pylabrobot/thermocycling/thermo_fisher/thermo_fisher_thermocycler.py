@@ -1,5 +1,3 @@
-import contextlib
-import anyio
 import hashlib
 import hmac
 import logging
@@ -12,6 +10,8 @@ from base64 import b64decode
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, cast
 from xml.dom import minidom
+
+import anyio
 
 from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.io import Socket
@@ -425,7 +425,6 @@ class ThermoFisherThermocyclerBackend(ThermocyclerBackend, metaclass=ABCMeta):
     return await self._read_response(timeout=response_timeout, read_once=read_once)
 
   async def _scpi_authenticate(self):
-    await self.io.setup()
     await self._read_response(timeout=5)
     challenge_res = await self.send_command({"cmd": "CHAL?"})
     challenge = self._parse_scpi_response(challenge_res)["args"][0]
@@ -1007,7 +1006,6 @@ class ThermoFisherThermocyclerBackend(ThermocyclerBackend, metaclass=ABCMeta):
     )
 
   # stop method removed, logic moved to cleanup callback in _enter_lifespan
-
 
   async def get_block_status(self, *args, **kwargs):
     raise NotImplementedError

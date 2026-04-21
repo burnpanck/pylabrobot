@@ -1,15 +1,11 @@
-import inspect
-import sys
-import weakref
 import contextlib
+import inspect
+import weakref
 from typing import Optional
-from abc import ABC, abstractmethod
 
-import anyio
-
+from pylabrobot.concurrency import AsyncExitStackWithShielding, AsyncResource, global_manager
 from pylabrobot.serializer import SerializableMixin
 from pylabrobot.utils.object_parsing import find_subclass
-from pylabrobot.concurrency import global_manager, AsyncResource
 
 
 class MachineBackend(SerializableMixin, AsyncResource):
@@ -28,7 +24,7 @@ class MachineBackend(SerializableMixin, AsyncResource):
     if "stop" in cls.__dict__:
       raise TypeError(f"Subclass {cls.__name__} is not allowed to override 'stop'")
 
-  async def _enter_lifespan(self, stack: contextlib.AsyncExitStack):
+  async def _enter_lifespan(self, stack: AsyncExitStackWithShielding):
     pass
 
   async def setup(self):

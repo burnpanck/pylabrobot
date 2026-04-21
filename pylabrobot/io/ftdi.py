@@ -1,11 +1,8 @@
-import anyio
-import contextlib
 import ctypes
 import logging
-
-from concurrent.futures import ThreadPoolExecutor
-from io import IOBase
 from typing import Optional, cast
+
+import anyio
 
 from pylabrobot.concurrency import AsyncExitStackWithShielding
 
@@ -29,6 +26,7 @@ except ImportError as e:
 
 from pylabrobot.io.capture import CaptureReader, Command, capturer, get_capture_or_validation_active
 from pylabrobot.io.errors import ValidationError
+from pylabrobot.io.io import IOBase
 from pylabrobot.io.validation_utils import LOG_LEVEL_IO, align_sequences
 
 logger = logging.getLogger(__name__)
@@ -316,8 +314,6 @@ class FTDI(IOBase):
     logger.log(LOG_LEVEL_IO, "[%s] readline %s", self._device_id, data)
     capturer.record(FTDICommand(device_id=self.device_id, action="readline", data=data.hex()))
     return cast(bytes, data)
-
-
 
   def serialize(self):
     return {

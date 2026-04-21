@@ -1,13 +1,14 @@
-import contextlib
 import logging
 import math
 import struct
 import sys
 import time
-import anyio
 from typing import Dict, List, Optional, Tuple, Union
 
+import anyio
+
 from pylabrobot import utils
+from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.io.ftdi import FTDI
 from pylabrobot.resources.plate import Plate
 from pylabrobot.resources.well import Well
@@ -31,7 +32,7 @@ class CLARIOstarBackend(PlateReaderBackend):
       human_readable_device_name="BMG CLARIOstar", device_id=device_id, vid=0x0403, pid=0xBB68
     )
 
-  async def _enter_lifespan(self, stack: contextlib.AsyncExitStack):
+  async def _enter_lifespan(self, stack: AsyncExitStackWithShielding):
     await super()._enter_lifespan(stack)
     await stack.enter_async_context(self.io)
     await self.io.set_baudrate(125000)
@@ -40,7 +41,6 @@ class CLARIOstarBackend(PlateReaderBackend):
 
     await self.initialize()
     await self.request_eeprom_data()
-
 
   async def get_stat(self):
     stat = await self.io.poll_modem_status()

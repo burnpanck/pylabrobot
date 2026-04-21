@@ -1,8 +1,7 @@
-from contextlib import asynccontextmanager
-
 import anyio
 
 from pylabrobot.io.io import IOBase
+
 
 class CustomReadMock:
   def __init__(self):
@@ -23,6 +22,7 @@ class CustomReadMock:
   def reset_mock(self):
     self.side_effect = None
 
+
 class CustomWriteMock:
   def __init__(self):
     self.side_effect = None
@@ -34,6 +34,7 @@ class CustomWriteMock:
 
   def reset_mock(self):
     self.side_effect = None
+
 
 class MockIO(IOBase):
   def __init__(self, **kwargs):

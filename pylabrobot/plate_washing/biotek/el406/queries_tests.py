@@ -4,8 +4,6 @@
 This module contains tests for Query methods.
 """
 
-import unittest
-
 # Import the backend module
 from pylabrobot.plate_washing.biotek.el406 import (
   EL406Sensor,
@@ -458,7 +456,6 @@ class TestGetInstrumentSettings(EL406TestCase):
     await super()._enter_lifespan(stack)
     self.backend.io.read_buffer = self._build_multi_query_buffer()
 
-
   async def test_request_instrument_settings_returns_dict(self):
     """request_instrument_settings should return a dictionary."""
     result = await self.backend.request_instrument_settings()
@@ -489,6 +486,3 @@ class TestGetInstrumentSettings(EL406TestCase):
     backend = ExperimentalBioTekEL406Backend()
     with self.assertRaises(RuntimeError):
       await backend.request_instrument_settings()
-
-
-

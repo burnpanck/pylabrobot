@@ -1,5 +1,4 @@
 import contextlib
-import time
 import typing
 
 import anyio
@@ -23,8 +22,6 @@ class InhecoTECControlBox:
     If HID._enter_lifespan() fails, ensure that libusb drivers were installed as per docs.
     """
     await stack.enter_async_context(self.io)
-
-
 
   @typing.no_type_check
   def _generate_packets(self, msg):

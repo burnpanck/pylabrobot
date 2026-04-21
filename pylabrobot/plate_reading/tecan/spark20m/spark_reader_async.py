@@ -1,8 +1,7 @@
-import logging
-import functools
-import time
 import contextlib
-from typing import Any, Dict, List, Optional, Tuple
+import functools
+import logging
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 import anyio
 
@@ -12,8 +11,8 @@ try:
 except ImportError:
   pass
 
+from pylabrobot.concurrency import AsyncExitStackWithShielding, AsyncResource
 from pylabrobot.io.usb import USB
-from pylabrobot.concurrency import AsyncResource, AsyncExitStackWithShielding
 
 from .enums import DEVICE_ENDPOINTS, VENDOR_ID, SparkDevice, SparkEndpoint
 from .spark_packet_parser import PACKET_TYPE, parse_single_spark_packet
@@ -178,12 +177,10 @@ class SparkReaderAsync(AsyncResource):
     timeout: Optional[float] = None,
   ) -> Optional[bytes]:
 
-    async def do_read():
+    async def do_read() -> Optional[bytes]:
       while True:
-        # reader._read_packet is synchronous, so run it in a thread
-        data = await anyio.to_thread.run_sync(
-          lambda: reader._read_packet(size=size, timeout=timeout, endpoint=endpoint)
-        )
+        # reader._read_packet is async
+        data = await reader._read_packet(size=size, timeout=timeout, endpoint=endpoint)
 
         if data is None:
           return None
@@ -335,7 +332,7 @@ class SparkReaderAsync(AsyncResource):
     self,
     device_type: SparkDevice,
     read_timeout: int = 100,
-  ) -> Optional[List[bytes]]:
+  ) -> AsyncIterator[Optional[List[bytes]]]:
     if device_type not in self.devices:
       logging.error(f"Device type {device_type} not connected.")
       yield None
@@ -373,4 +370,3 @@ class SparkReaderAsync(AsyncResource):
       stack.callback(tg.cancel_scope.cancel)
       tg.start_soon(background_reader)
       yield results
-

@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import anyio
 
 from pylabrobot.resources import Coordinate
+from pylabrobot.testing.concurrency import AnyioTestBase
 from pylabrobot.thermocycling import (
   Thermocycler,
   ThermocyclerBackend,
@@ -38,9 +39,6 @@ def mock_backend() -> MagicMock:
   return mock
 
 
-from pylabrobot.testing.concurrency import AnyioTestBase
-
-
 class TestThermocycler(AnyioTestBase):
   async def _enter_lifespan(self, stack):
 
@@ -52,7 +50,6 @@ class TestThermocycler(AnyioTestBase):
       backend=mock_backend(),
       child_location=Coordinate(0, 0, 0),
     )
-
 
   def test_thermocycler_serialization(self):
     """Test that the high-level resource serializes and deserializes correctly."""
@@ -123,7 +120,6 @@ class TestThermocycler(AnyioTestBase):
       assert self.tc.backend.get_hold_time.call_count == 3  # type: ignore
     finally:
       anyio.sleep = original_sleep
-
 
   async def test_is_profile_running_logic(self):
     """Test that `is_profile_running` returns the correct boolean based on various profile states."""

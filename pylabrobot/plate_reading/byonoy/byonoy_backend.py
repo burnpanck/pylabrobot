@@ -1,11 +1,11 @@
 import abc
-import contextlib
 import enum
 import time
 from typing import Dict, List, Optional
 
 import anyio
 
+from pylabrobot.concurrency import AsyncExitStackWithShielding
 from pylabrobot.io.binary import Reader, Writer
 from pylabrobot.io.hid import HID
 from pylabrobot.plate_reading.backend import PlateReaderBackend
@@ -29,7 +29,7 @@ class _ByonoyBase(PlateReaderBackend, metaclass=abc.ABCMeta):
     self._sending_pings = False  # Whether to actively send pings
     self._device_type = device_type
 
-  async def _enter_lifespan(self, stack: contextlib.AsyncExitStack):
+  async def _enter_lifespan(self, stack: AsyncExitStackWithShielding):
     """Set up the plate reader. This should be called before any other methods."""
     await super()._enter_lifespan(stack)
 
@@ -41,10 +41,6 @@ class _ByonoyBase(PlateReaderBackend, metaclass=abc.ABCMeta):
     stack.callback(tg.cancel_scope.cancel)
 
     tg.start_soon(self._ping_loop)
-
-
-
-
 
   def _assemble_command(self, report_id: int, payload: bytes, routing_info: bytes) -> bytes:
     packet = Writer().u16(report_id).raw_bytes(payload).finish()
@@ -94,9 +90,6 @@ class _ByonoyBase(PlateReaderBackend, metaclass=abc.ABCMeta):
 
       await anyio.sleep(self._ping_interval)
 
-
-
-
   def _start_background_pings(self) -> None:
     self._sending_pings = True
 
@@ -118,7 +111,7 @@ class ByonoyAbsorbance96AutomateBackend(_ByonoyBase):
   def __init__(self) -> None:
     super().__init__(pid=0x1199, device_type=_ByonoyDevice.ABSORBANCE_96)
 
-  async def _enter_lifespan(self, stack: contextlib.AsyncExitStack):
+  async def _enter_lifespan(self, stack: AsyncExitStackWithShielding):
     """Set up the plate reader. This should be called before any other methods."""
     await super()._enter_lifespan(stack)
 
@@ -331,6 +324,8 @@ class ByonoyLuminescence96AutomateBackend(_ByonoyBase):
       payload=payload3,
       wait_for_response=False,
     )
+
+    all_rows: List[float] = []
 
     try:
       with anyio.fail_after(120):

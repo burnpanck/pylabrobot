@@ -15,7 +15,6 @@ from typing import Dict, List, Tuple
 from unittest.mock import patch
 
 import pytest
-import anyio
 
 pytest.importorskip("numpy")
 pytest.importorskip("grpc")
@@ -855,6 +854,3 @@ class TestDecodeIntermediateResponse(unittest.TestCase):
     self.assertEqual(meta["blob_checksum"], 42)
     self.assertEqual(meta["packet_count"], 5)
     self.assertEqual(meta["packet_index"], 2)
-
-
-
