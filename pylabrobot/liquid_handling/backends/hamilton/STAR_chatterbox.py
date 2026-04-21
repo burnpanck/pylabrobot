@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Dict, List, Literal, Optional, Union
 
 from pylabrobot.concurrency import AsyncExitStackWithShielding
+from pylabrobot.liquid_handling.backends import LiquidHandlerBackend
 from pylabrobot.liquid_handling.backends.hamilton.STAR_backend import (
   DriveConfiguration,
   ExtendedConfiguration,
@@ -118,14 +119,7 @@ class STARChatterboxBackend(STARBackend):
       skip_iswap: If True, skip initializing the iSWAP module, if applicable.
       skip_core96_head: If True, skip initializing the CoRe 96 head module, if applicable.
     """
-    await super()._enter_lifespan(
-      stack,
-      skip_instrument_initialization=skip_instrument_initialization,
-      skip_pip=skip_pip,
-      skip_autoload=skip_autoload,
-      skip_iswap=skip_iswap,
-      skip_core96_head=skip_core96_head,
-    )
+    await LiquidHandlerBackend._enter_lifespan(self, stack)
 
     self.id_ = 0
 
