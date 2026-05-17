@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from typing import Dict, List, Literal, Optional, Union
 
 from pylabrobot.concurrency import AsyncExitStackWithShielding
-from pylabrobot.liquid_handling.backends import LiquidHandlerBackend
 from pylabrobot.liquid_handling.backends.hamilton.STAR_backend import (
   DriveConfiguration,
   ExtendedConfiguration,
@@ -13,6 +12,7 @@ from pylabrobot.liquid_handling.backends.hamilton.STAR_backend import (
   MachineConfiguration,
   STARBackend,
 )
+from pylabrobot.resources.container import Container
 from pylabrobot.resources.well import Well
 
 _DEFAULT_MACHINE_CONFIGURATION = MachineConfiguration(
@@ -119,7 +119,14 @@ class STARChatterboxBackend(STARBackend):
       skip_iswap: If True, skip initializing the iSWAP module, if applicable.
       skip_core96_head: If True, skip initializing the CoRe 96 head module, if applicable.
     """
-    await LiquidHandlerBackend._enter_lifespan(self, stack)
+    await super()._enter_lifespan(
+      stack,
+      skip_instrument_initialization=skip_instrument_initialization,
+      skip_pip=skip_pip,
+      skip_autoload=skip_autoload,
+      skip_iswap=skip_iswap,
+      skip_core96_head=skip_core96_head,
+    )
 
     self.id_ = 0
 
@@ -211,6 +218,10 @@ class STARChatterboxBackend(STARBackend):
         f"channel_idx must be between 0 and {self.num_channels - 1}, got {channel_idx}."
       )
     return self._channels_minimum_y_spacing[channel_idx]
+
+  async def channels_request_y_minimum_spacing(self) -> List[float]:
+    """Return mock per-channel minimum Y spacings for all channels."""
+    return list(self._channels_minimum_y_spacing)
 
   async def move_channel_y(self, channel: int, y: float):
     print(f"moving channel {channel} to y: {y}")
@@ -313,22 +324,33 @@ class STARChatterboxBackend(STARBackend):
   async def position_channels_in_y_direction(self, ys, make_space=True):
     print("positioning channels in y:", ys, "make_space:", make_space)
 
-  async def probe_liquid_heights(
-    self,
-    containers,
-    use_channels=None,
-    resource_offsets=None,
-    lld_mode=None,
-    search_speed=10.0,
-    n_replicates=1,
-    min_traverse_height_at_beginning_of_command=None,
-    min_traverse_height_during_command=None,
-    z_position_at_end_of_command=None,
-    move_to_z_safety_after=None,
-  ) -> List[float]:
-    """Return liquid heights from the volume tracker using each container's
-    height-from-volume function. No physical probing in simulation."""
-    return [c.compute_height_from_volume(c.tracker.get_used_volume()) for c in containers]
-
   async def request_pip_height_last_lld(self):
     return list(range(12))
+
+  async def _run_lld_on_channel_batch(
+    self,
+    batch,
+    containers: List[Container],
+    tip_lengths: List[float],
+    z_cavity_bottom: List[float],
+    z_top: List[float],
+    lld_mode: List["STARBackend.LLDMode"],
+    search_speed: float,
+    n_replicates: int,
+  ) -> Dict[int, List[Optional[float]]]:
+    """Simulate LLD by computing absolute heights from each container's volume tracker.
+
+    Empty containers report the cavity-bottom Z (relative height 0). Non-empty
+    containers report ``cavity_bottom + compute_height_from_volume(volume)`` so the
+    parent ``probe_liquid_heights`` can subtract ``z_cavity_bottom`` consistently.
+    """
+    measurements: Dict[int, List[Optional[float]]] = {}
+    for orig_idx in batch.indices:
+      container = containers[orig_idx]
+      volume = container.tracker.get_used_volume()
+      if volume == 0:
+        absolute_height = z_cavity_bottom[orig_idx]
+      else:
+        absolute_height = z_cavity_bottom[orig_idx] + container.compute_height_from_volume(volume)
+      measurements[orig_idx] = [absolute_height] * n_replicates
+    return measurements
